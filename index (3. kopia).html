@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RCP</title>
+<link rel="shortcut icon" href="https://sewbej.github.io/RCP/rcp.png">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 15px; max-width: 500px; margin: auto; background-color: #f0f2f5; }
+        h1 { text-align: center; color: #000; }
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.15); background: white; }
+        .hidden { display: none !important; }
+        .section { margin-top: 15px; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; }
+        .data-row { margin-bottom: 12px; font-size: 1.6em; color: #3c4043; }
+        .highlight { font-weight: bold; color: #111111; }
+        .status-badge { display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: bold; margin-top: 10px; font-size: 22px}
+        .status-exit { background: #e8f0fe; color: #1967d2; }
+        .status-return { background: #e6f4ea; color: #137333; }
+        
+        button { width: 100%; padding: 16px; margin-top: 12px; margin-bottom: 32px; font-size: 22px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+        #saveBtn { background-color: #1a73e8; color: white; box-shadow: 0 2px 6px rgba(26,115,232,0.4); }
+        #saveBtn.sending { background-color: #84ade0; cursor: not-allowed; }
+        #reportBtn { background-color: #34a853; color: white; margin-top: 30px; }
+        
+        #counter-display { margin-top: 80px; font-size: 1.0em; color: #5f6368; font-weight: 500; }
+        .has-data { color: #1a73e8 !important; font-weight: bold; }
+
+        #clearBtn { background-color: #ea4335; color: white; margin-top: 8px; opacity: 0.8;padding: 8px; font-size: 0.7em}
+        #manualBtn { background-color: #1a73e8; color: white; }
+        #cancelManualBtn { background-color: #d1d3d4; color: #3c4043; margin-top: 58px; padding: 8px; font-size: 0.9em;}
+        #confirmManualBtn { background-color: #1a73e8; color: white; }
+        #goToPreviewBtn {     background-color: #fbbc04;     color: #000;     margin-top: 8px; }
+        #goToHistoryBtn {     background-color: #5fc400;     color: #000;     margin-top: 8px; }
+
+
+
+        input { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #dadce0; border-radius: 8px; font-size: 18px; box-sizing: border-box; }
+        label { display: block; text-align: left; margin-top: 10px; color: #5f6368; font-weight: bold; }
+
+        button:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+    <h1>RCP</h1>
+
+    <div id="reader"></div>
+
+    <!-- Sekcja wprowadzania ręcznego -->
+    <div id="manual-section" class="section hidden">
+        <h3>Wpis ręczny</h3>
+        <label>Imię i Nazwisko</label>
+        <input type="text" id="manual-name" placeholder="imię i nazwisko">
+        <label>Godzina (HH:MM)</label>
+        <input type="time" id="manual-time">
+        
+        <button id="confirmManualBtn">Zatwierdź</button>
+        <button id="cancelManualBtn">Anuluj</button>
+    </div>
+
+    <!-- Panel po zeskanowaniu / wpisaniu -->
+    <div id="action-section" class="section hidden">
+        <div class="data-row"><span id="result-display" class="highlight"></span></div>
+        <div class="data-row" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+    <span>Godzina:</span>
+    <input type="time" id="time-display" class="highlight" style="width: auto; margin-top: 0; padding: 5px 10px; text-align: center;">
+</div>
+        <div id="detected-action" class="status-badge"></div>
+        
+        <button id="saveBtn">Zatwierdź</button>
+    </div>
+
+    <!-- Panel dolny -->
+    <div class="section" id="bottom-controls">
+        <button id="manualBtn">Wprowadź ręcznie</button>
+      <!--  <button id="goToHistoryBtn" onclick="window.location.href='podglad.html'">Pokaż przepracowane godziny</button>  -->
+        <button id="goToPreviewBtn" onclick="window.location.href='ostatnie.html'">Pokaż ostatnie wpisy</button>
+     <!--   <button id="reportBtn">Pobierz RCP EXCEL</button>-->
+        
+        <div id="counter-display"><span id="row-count">0</span></div>
+     <!--   <button id="clearBtn">Wyczyść całą pamięć</button>  -->
+    </div>
+
+<script>
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyfA6Ia_OP-gA1t5-COIvBSXN5IKrO3T9nFOQlY3z3zjg7j5iW4cFE9eOKqRILWfok/exec";
+
+    let html5QrcodeScanner;
+    let currentCode = "";
+    let currentFullDate = null;
+    let isReturnAction = false;
+
+    // --- FUNKCJA DŹWIĘKU ---
+    function playSuccessSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.type = 'sine'; 
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        } catch (e) {
+            console.log("Dźwięk nie mógł zostać odtworzony");
+        }
+    }
+
+    // --- FUNKCJA RESETUJĄCA PRZYCISK (NOWA) ---
+    function resetUI() {
+        const btn = document.getElementById('saveBtn');
+        btn.disabled = false;
+        btn.innerText = "Zatwierdź";
+        btn.classList.remove('sending');
+    }
+
+    function updateRowCounter() {
+        const logs = JSON.parse(localStorage.getItem('RCP')) || [];
+        document.getElementById('row-count').innerText = logs.length;
+        const displayElement = document.getElementById('counter-display');
+        logs.length > 0 ? displayElement.classList.add('has-data') : displayElement.classList.remove('has-data');
+    }
+
+    function startScanner() {
+        document.getElementById('action-section').classList.add('hidden');
+        document.getElementById('manual-section').classList.add('hidden');
+        document.getElementById('bottom-controls').classList.remove('hidden');
+        document.getElementById('reader').classList.remove('hidden');
+        updateRowCounter();
+        
+        // Ważne: Sprawdzamy czy skaner już istnieje, jeśli tak - czyścimy go przed ponownym startem
+        if (html5QrcodeScanner) {
+            html5QrcodeScanner.clear().then(() => {
+                html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 }, false);
+                html5QrcodeScanner.render(onScanSuccess);
+            });
+        } else {
+            html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 }, false);
+            html5QrcodeScanner.render(onScanSuccess);
+        }
+    }
+
+    function processEntry(name, dateObj) {
+        currentCode = name;
+        currentFullDate = dateObj;
+        
+        let logs = JSON.parse(localStorage.getItem('RCP')) || [];
+        let lastEntry = [...logs].reverse().find(log => log.kod === currentCode);
+        
+        const badge = document.getElementById('detected-action');
+        
+        if (lastEntry && lastEntry.zakonczenieRaw === null) {
+            isReturnAction = true;
+            badge.innerText = "ZAKOŃCZENIE";
+            badge.className = "status-badge status-return";
+        } else {
+            isReturnAction = false;
+            badge.innerText = "ROZPOCZĘCIE";
+            badge.className = "status-badge status-exit";
+        }
+
+        document.getElementById('result-display').innerText = currentCode;
+        const hours = currentFullDate.getHours().toString().padStart(2, '0');
+        const minutes = currentFullDate.getMinutes().toString().padStart(2, '0');
+        document.getElementById('time-display').value = `${hours}:${minutes}`;
+        
+        document.getElementById('reader').classList.add('hidden');
+        document.getElementById('manual-section').classList.add('hidden');
+        document.getElementById('action-section').classList.remove('hidden');
+        document.getElementById('bottom-controls').classList.add('hidden');
+    }
+
+    function onScanSuccess(decodedText) {
+        playSuccessSound();
+        // Clear scanneru
+        html5QrcodeScanner.clear();
+        processEntry(decodedText, new Date());
+    }
+
+    // --- LISTENERY PRZYCISKÓW ---
+    document.getElementById('manualBtn').addEventListener('click', () => {
+        if(html5QrcodeScanner) html5QrcodeScanner.clear();
+        document.getElementById('reader').classList.add('hidden');
+        document.getElementById('bottom-controls').classList.add('hidden');
+        document.getElementById('manual-section').classList.remove('hidden');
+        const now = new Date();
+        document.getElementById('manual-time').value = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+    });
+
+    document.getElementById('cancelManualBtn').addEventListener('click', startScanner);
+
+    document.getElementById('confirmManualBtn').addEventListener('click', () => {
+        const name = document.getElementById('manual-name').value.trim().toUpperCase();
+        const timeVal = document.getElementById('manual-time').value;
+        if (!name || !timeVal) { alert("Proszę wypełnić oba pola."); return; }
+        const [hours, minutes] = timeVal.split(':');
+        const manualDate = new Date();
+        manualDate.setHours(parseInt(hours), parseInt(minutes), 0);
+        processEntry(name, manualDate);
+    });
+
+    // --- GŁÓWNY LISTENERA ZAPISU ---
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('saveBtn');
+
+        if (!navigator.onLine) {
+            alert("⚠️ Brak połączenia z internetem!");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Wysyłanie...";
+        btn.classList.add('sending');
+
+        const editedTime = document.getElementById('time-display').value;
+        if (editedTime) {
+            const [newHours, newMinutes] = editedTime.split(':');
+            currentFullDate.setHours(parseInt(newHours), parseInt(newMinutes), 0);
+        }
+        
+        let logs = JSON.parse(localStorage.getItem('RCP')) || [];
+        let formattedDate = currentFullDate.toLocaleDateString('pl-PL') + " " + currentFullDate.toLocaleTimeString('pl-PL');
+        
+        let payload = {
+            kod: currentCode,
+            action: isReturnAction ? "zakonczenie" : "rozpoczecie",
+            datetime: formattedDate
+        };
+
+        try {
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error("Błąd serwera");
+
+            if (isReturnAction) {
+                for (let i = logs.length - 1; i >= 0; i--) {
+                    if (logs[i].kod === currentCode && logs[i].zakonczenieRaw === null) {
+                        logs[i].zakonczenieRaw = currentFullDate.toISOString();
+                        logs[i].zakonczenieFormat = currentFullDate.toLocaleTimeString('pl-PL');
+                        break;
+                    }
+                }
+            } else {
+                logs.push({
+                    kod: currentCode,
+                    rozpoczecieRaw: currentFullDate.toISOString(),
+                    rozpoczecieFormat: currentFullDate.toLocaleTimeString('pl-PL'),
+                    zakonczenieRaw: null,
+                    zakonczenieFormat: ""
+                });
+            }
+
+            localStorage.setItem('RCP', JSON.stringify(logs));
+            document.getElementById('manual-name').value = "";
+            
+            // PRZYWRACAMY PRZYCISK I WRACAMY DO SKANERA
+            resetUI();
+            startScanner();
+
+        } catch (err) {
+            console.error("Błąd:", err);
+            alert("❌ Błąd połączenia. Spróbuj jeszcze raz.");
+            btn.disabled = false;
+            btn.innerText = "Zatwierdź";
+        }
+    });
+
+    window.onload = startScanner;
+</script>
+</body>
+</html>

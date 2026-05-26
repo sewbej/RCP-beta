@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RCP</title>
+<link rel="shortcut icon" href="https://sewbej.github.io/RCP/rcp.png">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 15px; max-width: 500px; margin: auto; background-color: #4c00cf; }
+        h1 { text-align: center; color: #f1f1f1; }
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.15); background: white; }
+        .hidden { display: none !important; }
+        .section { margin-top: 15px; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; }
+        .data-row { margin-bottom: 12px; font-size: 1.6em; color: #3c4043; }
+        .highlight { font-weight: bold; color: #111111; }
+        .status-badge { display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: bold; margin-top: 10px; font-size: 22px}
+        .status-exit { background: #e8f0fe; color: #1967d2; }
+        .status-return { background: #e6f4ea; color: #137333; }
+        
+        button { width: 100%; padding: 16px; margin-top: 12px; font-size: 22px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+        #saveBtn { background-color: #1a73e8; color: white; box-shadow: 0 2px 6px rgba(26,115,232,0.4); }
+        #reportBtn { background-color: #34a853; color: white; margin-top: 30px; }
+        
+        #counter-display { margin-top: 80px; font-size: 1.0em; color: #5f6368; font-weight: 500; }
+        .has-data { color: #1a73e8 !important; font-weight: bold; }
+
+        #clearBtn { background-color: #ea4335; color: white; margin-top: 8px; opacity: 0.8;padding: 8px; font-size: 0.7em}
+        #manualBtn { background-color: #5f6368; color: white; }
+        #cancelManualBtn { background-color: #f1f3f4; color: #3c4043; margin-top: 58px; padding: 8px; font-size: 0.9em;}
+        #confirmManualBtn { background-color: #1a73e8; color: white; }
+
+        input { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #dadce0; border-radius: 8px; font-size: 18px; box-sizing: border-box; }
+        label { display: block; text-align: left; margin-top: 10px; color: #5f6368; font-weight: bold; }
+
+        button:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+    <h1>RCP</h1>
+
+    <div id="reader"></div>
+
+    <!-- Sekcja wprowadzania ręcznego -->
+    <div id="manual-section" class="section hidden">
+        <h3>Wpis ręczny</h3>
+        <label>Imię i Nazwisko</label>
+        <input type="text" id="manual-name" placeholder="imię i nazwisko">
+        <label>Godzina (HH:MM)</label>
+        <input type="time" id="manual-time">
+        
+        <button id="confirmManualBtn">Zatwierdź</button>
+        <button id="cancelManualBtn">Anuluj</button>
+    </div>
+
+    <!-- Panel po zeskanowaniu / wpisaniu -->
+    <div id="action-section" class="section hidden">
+        <div class="data-row"><span id="result-display" class="highlight"></span></div>
+        <div class="data-row">Godzina: <span id="time-display" class="highlight"></span></div>
+        <div id="detected-action" class="status-badge"></div>
+        
+        <button id="saveBtn">Zatwierdź</button>
+    </div>
+
+    <!-- Panel dolny -->
+    <div class="section" id="bottom-controls">
+        <button id="manualBtn">Wprowadź ręcznie</button>
+    <!--  <button id="reportBtn">Pobierz RCP EXCEL</button> -->
+        
+        <div id="counter-display"><span id="row-count">0</span></div>
+     <!--   <button id="clearBtn">Wyczyść całą pamięć</button>  -->
+    </div>
+
+    <script>
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwVMSzz6ShMygbe7h4d229KAaQgeLJdnVEVYwDvbH1Lt12MAeZ4_qlH-EIR80WdGVjSuA/exec";
+
+        let html5QrcodeScanner;
+        let currentCode = "";
+        let currentFullDate = null;
+        let isReturnAction = false;
+
+        // --- FUNKCJA DŹWIĘKU ---
+        function playSuccessSound() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.type = 'sine'; 
+                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Częstotliwość dźwięku
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Głośność
+
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.1); // Czas trwania (0.1 sekundy)
+            } catch (e) {
+                console.log("Dźwięk nie mógł zostać odtworzony (brak interakcji lub wsparcia)");
+            }
+        }
+
+        function updateRowCounter() {
+            const logs = JSON.parse(localStorage.getItem('RCP')) || [];
+            document.getElementById('row-count').innerText = logs.length;
+            const displayElement = document.getElementById('counter-display');
+            logs.length > 0 ? displayElement.classList.add('has-data') : displayElement.classList.remove('has-data');
+        }
+
+        function startScanner() {
+            document.getElementById('action-section').classList.add('hidden');
+            document.getElementById('manual-section').classList.add('hidden');
+            document.getElementById('bottom-controls').classList.remove('hidden');
+            document.getElementById('reader').classList.remove('hidden');
+            updateRowCounter();
+            
+            html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 }, false);
+            html5QrcodeScanner.render(onScanSuccess);
+        }
+
+        // Wspólna funkcja dla skanera i wpisu ręcznego
+        function processEntry(name, dateObj) {
+            currentCode = name;
+            currentFullDate = dateObj;
+            
+            let logs = JSON.parse(localStorage.getItem('RCP')) || [];
+            let lastEntry = [...logs].reverse().find(log => log.kod === currentCode);
+            
+            const badge = document.getElementById('detected-action');
+            
+            if (lastEntry && lastEntry.zakonczenieRaw === null) {
+                isReturnAction = true;
+                badge.innerText = "ZAKOŃCZENIE";
+                badge.className = "status-badge status-return";
+            } else {
+                isReturnAction = false;
+                badge.innerText = "ROZPOCZĘCIE";
+                badge.className = "status-badge status-exit";
+            }
+
+            document.getElementById('result-display').innerText = currentCode;
+            document.getElementById('time-display').innerText = currentFullDate.toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'});
+            
+            document.getElementById('reader').classList.add('hidden');
+            document.getElementById('manual-section').classList.add('hidden');
+            document.getElementById('action-section').classList.remove('hidden');
+            document.getElementById('bottom-controls').classList.add('hidden');
+        }
+
+        function onScanSuccess(decodedText) {
+            playSuccessSound();
+            html5QrcodeScanner.clear();
+            processEntry(decodedText, new Date());
+        }
+
+        // Obsługa przycisku "Wprowadź ręcznie"
+        document.getElementById('manualBtn').addEventListener('click', () => {
+            if(html5QrcodeScanner) html5QrcodeScanner.clear();
+            document.getElementById('reader').classList.add('hidden');
+            document.getElementById('bottom-controls').classList.add('hidden');
+            document.getElementById('manual-section').classList.remove('hidden');
+            
+            // Ustawienie domyślnego czasu na teraz
+            const now = new Date();
+            document.getElementById('manual-time').value = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+        });
+
+        document.getElementById('cancelManualBtn').addEventListener('click', startScanner);
+
+        document.getElementById('confirmManualBtn').addEventListener('click', () => {
+            const name = document.getElementById('manual-name').value.trim().toUpperCase();
+            const timeVal = document.getElementById('manual-time').value;
+            
+            if (!name || !timeVal) {
+                alert("Proszę wypełnić oba pola.");
+                return;
+            }
+
+            // Tworzenie obiektu daty na podstawie dzisiejszego dnia i wpisanej godziny
+            const [hours, minutes] = timeVal.split(':');
+            const manualDate = new Date();
+            manualDate.setHours(parseInt(hours), parseInt(minutes), 0);
+
+            processEntry(name, manualDate);
+        });
+
+        document.getElementById('saveBtn').addEventListener('click', () => {
+            let logs = JSON.parse(localStorage.getItem('RCP')) || [];
+            let formattedDate = currentFullDate.toLocaleDateString('pl-PL') + " " + currentFullDate.toLocaleTimeString('pl-PL');
+            
+            let payload = {
+                kod: currentCode,
+                action: isReturnAction ? "zakonczenie" : "rozpoczecie",
+                datetime: formattedDate
+            };
+
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify(payload)
+            }).then(() => console.log("Wysłano do Google Sheets!"))
+              .catch(err => console.error("Błąd Arkusza:", err));
+
+            if (isReturnAction) {
+                for (let i = logs.length - 1; i >= 0; i--) {
+                    if (logs[i].kod === currentCode && logs[i].zakonczenieRaw === null) {
+                        logs[i].zakonczenieRaw = currentFullDate.toISOString();
+                        logs[i].zakonczenieFormat = currentFullDate.toLocaleTimeString('pl-PL');
+                        break;
+                    }
+                }
+            } else {
+                logs.push({
+                    kod: currentCode,
+                    rozpoczecieRaw: currentFullDate.toISOString(),
+                    rozpoczecieFormat: currentFullDate.toLocaleTimeString('pl-PL'),
+                    zakonczenieRaw: null,
+                    zakonczenieFormat: ""
+                });
+            }
+
+            localStorage.setItem('RCP', JSON.stringify(logs));
+            document.getElementById('manual-name').value = ""; // Czyścimy pole
+            startScanner();
+        });
+
+        // Pozostałe funkcje Excela i czyszczenia bez zmian...
+        function calculateDuration(startISO, endISO) {
+            if (!startISO || !endISO) return "";
+            const start = new Date(startISO);
+            const end = new Date(endISO);
+            let diffSec = Math.floor((end - start) / 1000);
+            let h = Math.floor(diffSec / 3600);
+            let m = Math.floor((diffSec % 3600) / 60);
+            let s = diffSec % 60;
+            return [h, m, s].map(v => v < 10 ? "0" + v : v).join(":");
+        }
+
+     //   document.getElementById('reportBtn').addEventListener('click', () => {
+     //       let logs = JSON.parse(localStorage.getItem('RCP'));
+     //       if (!logs || logs.length === 0) { alert("Brak danych."); return; }
+
+     //       const excelData = logs.map(log => ({
+     //           "Imię i Nazwisko": log.kod,
+     //           "ROZPOCZĘCIE": log.rozpoczecieFormat,
+     //           "ZAKOŃCZENIE": log.zakonczenieFormat,
+     //           "czas pracy": calculateDuration(log.rozpoczecieRaw, log.zakonczenieRaw)
+     //       }));
+
+     //       const worksheet = XLSX.utils.json_to_sheet(excelData);
+     //       const workbook = XLSX.utils.book_new();
+     //       XLSX.utils.book_append_sheet(workbook, worksheet, "Rejestr");
+     //       XLSX.writeFile(workbook, `RCP_${new Date().toLocaleDateString()}.xlsx`);
+     //   });
+
+      //  document.getElementById('clearBtn').addEventListener('click', () => {
+      //      if (confirm("Wyczyścić pamięć?")) {
+      //          localStorage.removeItem('RCP');
+      //          updateRowCounter();
+      //      }
+      //  });
+
+        window.onload = startScanner;
+    </script>
+</body>
+</html>
