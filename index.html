@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RCP</title>
+<link rel="shortcut icon" href="https://sewbej.github.io/RCP/rcp.png">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 15px; max-width: 500px; margin: auto; background-color: #f0f2f5; }
+        h1 { text-align: center; color: #000; }
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.15); background: white; }
+        .hidden { display: none !important; }
+        .section { margin-top: 15px; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; }
+        .data-row { margin-bottom: 12px; font-size: 1.6em; color: #3c4043; }
+        .highlight { font-weight: bold; color: #111111; }
+        .status-badge { display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: bold; margin-top: 10px; font-size: 22px}
+        .status-exit { background: #e8f0fe; color: #1967d2; }
+        .status-return { background: #e6f4ea; color: #137333; }
+        
+        button { width: 100%; padding: 16px; margin-top: 12px; margin-bottom: 32px; font-size: 22px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+        #saveBtn { background-color: #1a73e8; color: white; box-shadow: 0 2px 6px rgba(26,115,232,0.4); }
+        #saveBtn.sending { background-color: #84ade0; cursor: not-allowed; }
+        #reportBtn { background-color: #34a853; color: white; margin-top: 30px; }
+        #deviceIdBtn{ background-color: #ea4335; color: white; margin-top: 90px;padding: 8px; font-size: 0.8em}
+        #counter-display { margin-top: 80px; font-size: 1.0em; color: #5f6368; font-weight: 500; }
+        .has-data { color: #1a73e8 !important; font-weight: bold; }
+        .no-data { text-align: center; padding: 20px; color: #999; }
+        #clearBtn { background-color: #ea4335; color: white; margin-top: 8px; opacity: 0.8;padding: 8px; font-size: 0.7em}
+        #manualBtn { background-color: #1a73e8; color: white; }
+        #cancelManualBtn { background-color: #d1d3d4; color: #3c4043; margin-top: 58px; padding: 8px; font-size: 0.9em;}
+        #cancelSaveBtn { background-color: #d1d3d4; color: #3c4043; margin-top: 58px; padding: 8px; font-size: 0.9em;}
+        #confirmManualBtn { background-color: #1a73e8; color: white; }
+        #goToPreviewBtn {     background-color: #fbbc04;     color: #000;     margin-top: 20px; }
+        #goToHistoryBtn {     background-color: #5fc400;     color: #000;     margin-top: 8px; }
+        #GeneratorBtn {     background-color: #5fc400;     color: #000;     margin-top: 8px; }
+        #pracownikBtn {     background-color: #65d1db;     color: #000;     margin-top: 28px; }
+        #kierownikBtn {     background-color: #ca8eed;     color: #000;     margin-top: 28px; }
+
+
+
+        input { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #dadce0; border-radius: 8px; font-size: 18px; box-sizing: border-box; }
+        label { display: block; text-align: left; margin-top: 10px; color: #5f6368; font-weight: bold; }
+
+        button:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+    <h1>RCP</h1>
+
+    <div id="reader"></div>
+
+    <!-- Sekcja wprowadzania ręcznego -->
+    <div id="manual-section" class="section hidden">
+        <h3>Wpis ręczny</h3>
+        <label>Imię i Nazwisko</label>
+        <input type="text" id="manual-name" placeholder="imię i nazwisko">
+       
+        <input type="datetime-local" id="manual-time" style="display: none;">
+        
+        <button id="confirmManualBtn">Zatwierdź</button>
+        <button id="cancelManualBtn">Anuluj</button>
+    </div>
+
+    <!-- Panel po zeskanowaniu / wpisaniu -->
+    <div id="action-section" class="section hidden">
+        <div class="data-row"><span id="result-display" class="highlight"></span></div>
+        <div class="data-row" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+    <span></span>
+    <input type="datetime-local" id="time-display" class="highlight" style="width: auto; margin-top: 0; padding: 5px 10px; text-align: center;">
+</div>
+        <div id="detected-action" class="status-badge"></div>
+        
+        <button id="saveBtn">Zatwierdź</button>
+<button id="cancelSaveBtn">Anuluj</button>
+    </div>
+
+    <!-- Panel dolny -->
+    <div class="section" id="bottom-controls">
+        <button id="manualBtn">Wprowadź ręcznie</button>
+      <!--  <button id="goToHistoryBtn" onclick="window.location.href='podglad.html'">Pokaż przepracowane godziny</button>  -->
+        <button id="goToPreviewBtn" onclick="window.location.href='ostatnie.html'">Pokaż ostatnie wpisy</button>
+     <!--   <button id="reportBtn">Pobierz RCP EXCEL</button>-->
+        <!-- Sekcja konfiguracji urządzenia -->
+<div class="admin-controls" style="margin-top: 15px;">
+<button id="GeneratorBtn" onclick="window.location.href='https://sewbej.github.io/QRcode-generator'">Generator QR</button>
+<button id="pracownikBtn" onclick="window.location.href='qrcode.jpeg'" >Zestawienie godzin (pracownik)</button>
+<button id="kierownikBtn" onclick="window.location.href='podglad.html'">Zestawienie godzin (kierownik)</button>
+    <button id="deviceIdBtn" class="btn-secondary">Identyfikator</button>
+</div>
+        <div id="counter-display"><span id="row-count">0</span></div>
+     <!--   <button id="clearBtn">Wyczyść całą pamięć</button>  -->
+    </div>
+<!-- Ładne okno dialogowe sukcesu -->
+<div id="successModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 25px; border-radius: 16px; max-width: 320px; width: 85%; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: 'Segoe UI', sans-serif;">
+        <div style="font-size: 48px; color: #2e7d32; margin-bottom: 10px;">✔</div>
+        <h3 style="margin: 0 0 10px 0; color: #2e7d32; font-size: 20px;">Zapisano pomyślnie!</h3>
+        
+        <button id="modalOkBtn" style="width: 100%; padding: 15px; background-color: #2e7d32; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s;">OK</button>
+    </div>
+</div>
+<script>
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLFI-RR9SJTVsaqZay5bRHfNT2atfVs2ByoXQC0MAN1Qi6E_m1RgIkfxwzEAQRJKtW/exec";
+
+    let html5QrcodeScanner;
+    let currentCode = "";
+    let currentFullDate = null;
+    let isReturnAction = false;
+
+    // --- FUNKCJA DŹWIĘKU ---
+    function playSuccessSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.type = 'sine'; 
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        } catch (e) {
+            console.log("Dźwięk nie mógł zostać odtworzony");
+        }
+    }
+
+    function resetUI() {
+        const btn = document.getElementById('saveBtn');
+        btn.disabled = false;
+        btn.innerText = "Zatwierdź";
+        btn.classList.remove('sending');
+        
+        // Odblokowanie przycisku anulowania po zresetowaniu UI
+        const cancelBtn = document.getElementById('cancelSaveBtn');
+        if (cancelBtn) cancelBtn.disabled = false;
+    }
+
+    // --- FUNKCJA AKTUALIZACJI ETYKIETY PRZYCISKU ---
+    function updateDeviceButtonLabel() {
+        const savedId = localStorage.getItem('app_device_id');
+        const btn = document.getElementById('deviceIdBtn');
+        if (savedId) {
+            btn.innerText = `Identyfikator: **********`;
+            btn.className = "deviceIdBtn";
+        } else {
+            btn.innerText = "Identyfikator";
+            btn.className = "deviceIdBtn";
+        }
+    }
+
+    function updateRowCounter() {
+        const logs = JSON.parse(localStorage.getItem('RCP')) || [];
+        document.getElementById('row-count').innerText = logs.length;
+        const displayElement = document.getElementById('counter-display');
+        logs.length > 0 ? displayElement.classList.add('has-data') : displayElement.classList.remove('has-data');
+    }
+
+    function startScanner() {
+        document.getElementById('action-section').classList.add('hidden');
+        document.getElementById('manual-section').classList.add('hidden');
+        document.getElementById('bottom-controls').classList.remove('hidden');
+        document.getElementById('reader').classList.remove('hidden');
+        updateRowCounter();
+        updateDeviceButtonLabel();
+        
+        if (html5QrcodeScanner) {
+            html5QrcodeScanner.clear().then(() => {
+                html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 }, false);
+                html5QrcodeScanner.render(onScanSuccess);
+            });
+        } else {
+            html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 }, false);
+            html5QrcodeScanner.render(onScanSuccess);
+        }
+    }
+
+    function processEntry(name, dateObj) {
+        currentCode = name;
+        currentFullDate = dateObj;
+        
+        let logs = JSON.parse(localStorage.getItem('RCP')) || [];
+        let lastEntry = [...logs].reverse().find(log => log.kod === currentCode);
+        
+        const badge = document.getElementById('detected-action');
+        
+        if (lastEntry && lastEntry.zakonczenieRaw === null) {
+            isReturnAction = true;
+            badge.innerText = "ZAKOŃCZENIE";
+            badge.className = "status-badge status-return";
+        } else {
+            isReturnAction = false;
+            badge.innerText = "ROZPOCZĘCIE";
+            badge.className = "status-badge status-exit";
+        }
+
+        document.getElementById('result-display').innerText = currentCode;
+        
+        // POPRAWKA: Konwersja daty na pełny format lokalny YYYY-MM-DDTHH:MM dla pola datetime-local
+        const offset = currentFullDate.getTimezoneOffset() * 60000;
+        const localISOTime = (new Date(currentFullDate.getTime() - offset)).toISOString().slice(0, 16);
+        document.getElementById('time-display').value = localISOTime;
+        
+        document.getElementById('reader').classList.add('hidden');
+        document.getElementById('manual-section').classList.add('hidden');
+        document.getElementById('action-section').classList.remove('hidden');
+        document.getElementById('bottom-controls').classList.add('hidden');
+    }
+
+    function onScanSuccess(decodedText) {
+        playSuccessSound();
+        html5QrcodeScanner.clear();
+        processEntry(decodedText, new Date());
+    }
+
+    // --- OBSŁUGA USTAWIANIA IDENTYFIKATORA ---
+    document.getElementById('deviceIdBtn').addEventListener('click', () => {
+        const currentSaved = localStorage.getItem('app_device_id') || ""; 
+        const inputId = prompt("Wprowadź identyfikator:", currentSaved);
+        
+        if (inputId === null) return;
+
+        localStorage.setItem('app_device_id', inputId.trim());
+        updateDeviceButtonLabel();
+    });
+
+    // Obsługa przycisku "Wprowadź ręcznie"
+// Obsługa przycisku "Wprowadź ręcznie"
+    document.getElementById('manualBtn').addEventListener('click', () => {
+        if(html5QrcodeScanner) html5QrcodeScanner.clear();
+        document.getElementById('reader').classList.add('hidden');
+        document.getElementById('bottom-controls').classList.add('hidden');
+        document.getElementById('manual-section').classList.remove('hidden');
+        
+        // Czyścimy pole tekstowe na nazwisko przy każdym otwarciu panelu
+        document.getElementById('manual-name').value = "";
+    });
+
+    document.getElementById('cancelManualBtn').addEventListener('click', startScanner);
+
+    document.getElementById('confirmManualBtn').addEventListener('click', () => {
+        const name = document.getElementById('manual-name').value.trim().toUpperCase();
+        
+        if (!name) { 
+            alert("Proszę wpisać nazwisko."); 
+            return; 
+        }
+        
+        // Zamiast czytać z pola, generujemy aktualną datę i godzinę "tu i teraz"
+        const manualDate = new Date(); 
+        
+        // Przekazujemy dane do standardowego ekranu podsumowania (tam gdzie można to jeszcze edytować)
+        processEntry(name, manualDate);
+    });
+
+    // --- ANULOWANIE BŁĘDNEGO ZESKANOWANIA ---
+    document.getElementById('cancelSaveBtn').addEventListener('click', () => {
+        if (document.getElementById('manual-name')) {
+            document.getElementById('manual-name').value = "";
+        }
+        currentCode = ""; 
+        resetUI();
+        startScanner();
+    });
+
+    // --- GŁÓWNY LISTENER ZAPISU (Z WYSYŁANIEM ID URZĄDZENIA) ---
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('saveBtn');
+
+        if (!navigator.onLine) {
+            alert("⚠️ Brak połączenia z internetem!");
+            return;
+        }
+
+        const currentDeviceId = localStorage.getItem('app_device_id') || "";
+
+        if (!currentDeviceId) {
+            alert("❌ Nie można zatwierdzić! Najpierw skonfiguruj Identyfikator Urządzenia.");
+            return;
+        }
+
+        // Pobieramy wartość z pola edycji daty/czasu i nadpisujemy obiekt currentFullDate
+        const editedTimestamp = document.getElementById('time-display').value;
+        if (editedTimestamp) {
+            currentFullDate = new Date(editedTimestamp);
+        } else {
+            alert("❌ Proszę wprowadzić poprawną datę i godzinę.");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Wysyłanie...";
+        btn.classList.add('sending');
+        
+        // Blokada przycisku anulowania na czas wysyłania do bazy danych
+        const cancelBtn = document.getElementById('cancelSaveBtn');
+        if (cancelBtn) cancelBtn.disabled = true;
+
+        let logs = JSON.parse(localStorage.getItem('RCP')) || [];
+        let formattedDate = currentFullDate.toLocaleDateString('pl-PL') + " " + currentFullDate.toLocaleTimeString('pl-PL');
+        
+        let payload = {
+            kod: currentCode,
+            action: isReturnAction ? "zakonczenie" : "rozpoczecie",
+            datetime: formattedDate,
+            deviceId: currentDeviceId
+        };
+
+        try {
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP_${response.status}`);
+            }
+
+            const responseText = await response.text();
+            let data;
+
+            try {
+                data = JSON.parse(responseText);
+            } catch (jsonError) {
+                if (responseText.includes("Urządzenie nieautoryzowane") || responseText.includes("Brak dostępu")) {
+                    alert("❌ Nieautoryzowane urządzenie!\nBrak dostępu do systemu rejestracji.");
+                    resetUI();
+                    return;
+                }
+                throw new Error("ERR_JSON_PARSE");
+            }
+
+            if (data && data.status === "error") {
+                alert(`❌ Odmowa dostępu: ${data.message}`);
+                resetUI();
+                return;
+            }
+
+            // --- SUKCES: Autoryzacja i zapis przeszły pomyślnie ---
+            if (isReturnAction) {
+                for (let i = logs.length - 1; i >= 0; i--) {
+                    if (logs[i].kod === currentCode && logs[i].zakonczenieRaw === null) {
+                        logs[i].zakonczenieRaw = currentFullDate.toISOString();
+                        logs[i].zakonczenieFormat = currentFullDate.toLocaleTimeString('pl-PL');
+                        break;
+                    }
+                }
+            } else {
+                logs.push({
+                    kod: currentCode,
+                    rozpoczecieRaw: currentFullDate.toISOString(),
+                    rozpoczecieFormat: currentFullDate.toLocaleTimeString('pl-PL'),
+                    zakonczenieRaw: null,
+                    zakonczenieFormat: ""
+                });
+            }
+
+            localStorage.setItem('RCP', JSON.stringify(logs));
+            document.getElementById('manual-name').value = "";
+
+            const modal = document.getElementById('successModal');
+            modal.style.display = "flex";
+
+            //playSuccessSound();
+
+            await new Promise((resolve) => {
+                document.getElementById('modalOkBtn').onclick = function() {
+                    modal.style.display = "none";
+                    resolve();
+                };
+            });
+            
+            resetUI();
+            startScanner();
+
+        } catch (err) {
+            console.error("Szczegóły błędu:", err);
+            if (err.name === "TypeError") {
+                alert("🔒 Brak autoryzacji bazy danych!\nTwoje urządzenie prawdopodobnie nie zostało jeszcze dodane do listy autoryzowanych urządzeń w arkuszu.");
+            } else {
+                alert("❌ Błąd połączenia internetowego. Spróbuj jeszcze raz.");
+            }
+            resetUI();
+        }
+    });
+
+    function calculateDuration(startISO, endISO) {
+        if (!startISO || !endISO) return "";
+        const start = new Date(startISO);
+        const end = new Date(endISO);
+        let diffSec = Math.floor((end - start) / 1000);
+        let h = Math.floor(diffSec / 3600);
+        let m = Math.floor((diffSec % 3600) / 60);
+        let s = diffSec % 60;
+        return [h, m, s].map(v => v < 10 ? "0" + v : v).join(":");
+    }
+
+    window.onload = startScanner;
+</script>

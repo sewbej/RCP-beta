@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raport Miesięczny RCP</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 15px; max-width: 700px; margin: auto; background-color: #f0f2f5; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h3 { text-align: center; color: #000; margin-top: -10px; font-weight: normal; }
+        
+        #loader { text-align: center; margin: 20px 0; color: #000; font-weight: bold; }
+        
+        .results-container { margin-top: 25px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; font-size: 16px; }
+        th { background-color: #ffffff; color: #000000; font-weight: bold; padding-top: 6px; border-bottom: 1px solid #444; text-align: center; font-size: 14px;}
+        td { padding: 2px; border-bottom: 1px solid #444; border-left: 1px solid #ccc; color: #000; text-align: center;}
+        tr:last-child, td:last-child { border-right: 1px solid #ccc; }
+        .no-data { text-align: center; padding: 20px; color: #999; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h3 id="periodDisplay">Pobieranie okresu...</h3>
+        
+        <div id="loader">Generowanie raportu...</div>
+
+        <div id="results" class="results-container">
+            <!-- Tabela wygeneruje się automatycznie -->
+        </div>
+    </div>
+
+<script>
+    // --- TU WKLEJ SWÓJ LINK DO GOOGLE SCRIPT ---
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLFI-RR9SJTVsaqZay5bRHfNT2atfVs2ByoXQC0MAN1Qi6E_m1RgIkfxwzEAQRJKtW/exec";
+
+    // Odczytanie parametrów z adresu URL (?miesiac=Maj&rok=2026)
+    const urlParams = new URLSearchParams(window.location.search);
+    const miesiac = urlParams.get('miesiac');
+    const rok = urlParams.get('rok');
+
+    async function fetchMonthlyReport() {
+        const loader = document.getElementById('loader');
+        const resultsDiv = document.getElementById('results');
+        const periodDisplay = document.getElementById('periodDisplay');
+
+        if (!miesiac || !rok) {
+            resultsDiv.innerHTML = '<div class="no-data" style="color: red;">Błąd: Brak zdefiniowanego okresu.</div>';
+            loader.style.display = "none";
+            return;
+        }
+
+        periodDisplay.innerText = `${miesiac} ${rok}`;
+
+        // POBIERANIE Z PAMIĘCI URZĄDZENIA: Ujednolicony klucz 'app_device_id'
+        const savedDeviceId = localStorage.getItem('app_device_id') || "";
+
+        // Blokada: Jeśli brak klucza w pamięci przeglądarki, przerywamy i wyświetlamy błąd
+        if (!savedDeviceId) {
+            resultsDiv.innerHTML = `
+                <div class="no-data" style="color: #d9534f; font-weight: bold; padding: 20px;">
+                    Brak identyfikatora urządzenia w pamięci!<br>
+                    <small style="color: #666; font-weight: normal;">Zautoryzuj urządzenie w panelu głównym aplikacji (index.html).</small>
+                </div>`;
+            loader.style.display = "none";
+            return;
+        }
+
+        try {
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({
+                    action: "get_month_data",
+                    miesiac: miesiac,
+                    rok: rok,
+                    deviceId: savedDeviceId // Przekazanie klucza autoryzacyjnego do Google Apps Script
+                })
+            });
+            
+            const data = await response.json();
+
+            // Obsługa błędu autoryzacji bezpośrednio z Google Apps Script
+            if (data && data.status === "error") {
+                resultsDiv.innerHTML = `<div class="no-data" style="color: red; font-weight: bold;">${data.message}</div>`;
+                return;
+            }
+
+            if (!Array.isArray(data) || data.length === 0) {
+                resultsDiv.innerHTML = `<div class="no-data">Brak danych RCP za okres: ${miesiac} ${rok}.</div>`;
+            } else {
+                let html = `<table>
+                    <thead>
+                        <tr>
+                            <th>nazwisko</th>
+                            <th>data</th>
+                            <th>rozpoczęcie</th>
+                            <th>zakończenie</th>
+                            <th>czas_pracy</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+                
+                // Zestaw do śledzenia unikalnych połączeń: pracownik + data w danym miesiącu
+                const wyswietloneWpisy = new Set();
+
+                data.forEach(row => {
+                    // Tworzymy unikalny klucz unikalności, np. "jan kowalski_18.05.2026"
+                    const kluczDnia = `${row.nazwisko.trim().toLowerCase()}_${row.data}`;
+
+                    // Jeśli to połączenie nazwiska i daty pojawia się PIERWSZY raz (czyli jest najnowsze)
+                    if (!wyswietloneWpisy.has(kluczDnia)) {
+                        wyswietloneWpisy.add(kluczDnia); // Blokujemy ten dzień dla tego pracownika
+
+                        html += `<tr>
+                            <td style="font-weight: normal; color: #000; text-align: left">${row.nazwisko}</td>
+                            <td>${row.data}</td>
+                            <td>${row.rozpoczecie}</td>
+                            <td>${row.zakonczenie}</td>
+                            <td>${row.czas}</td>
+                        </tr>`;
+                    }
+                });
+
+                html += '</tbody></table>';
+                resultsDiv.innerHTML = html;
+            }
+        } catch (error) {
+            console.error(error);
+            resultsDiv.innerHTML = '<div class="no-data" style="color: red;">Błąd połączenia z bazą danych Google.</div>';
+        } finally {
+            loader.style.display = "none";
+        }
+    }
+
+    window.onload = fetchMonthlyReport;
+</script>
+</body>
+</html>

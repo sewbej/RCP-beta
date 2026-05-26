@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZESTAWIENIE GODZIN PRACY</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; max-width: 700px; margin: auto; background-color: #ffffff; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 0 1px 1px rgba(0,0,0,0.6); }
+        .header-area { text-align: center; border-bottom: 2px solid #000; padding-bottom: 2px; margin-bottom: 2px; }
+        h3 { margin: 0 0 8px 0; color: #000; letter-spacing: 0.5px; }
+        .meta-text { font-size: 18px; margin: 4px 0; color: #000; }
+        .meta-text strong { color: #000; }
+        
+        .print-btn { width: auto; padding: 6px 12px; background-color: #fff; color: #000; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; transition: 0.2s; box-shadow: 0 0 1px 1px rgba(0,0,0,0.6); margin-bottom: 15px; }
+        .print-btn:hover { background-color: #000; color: #fff; }
+.meta-container {
+    display: flex;
+    justify-content: space-between; /* Rozsuwa elementy na lewą i prawą stronę */
+    flex-wrap: wrap;               /* W razie bardzo wąskiego ekranu ułoży je jeden pod drugim, żeby tekst się nie uciął */
+    gap: 10px;                     /* Minimalny odstęp między nimi */
+    margin-top: 8px;
+}
+        #loader { text-align: center; margin-top: 30px; color: #000; font-weight: bold; font-size: 18px; }
+        .results-container { margin-top: 6px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 1px; overflow: hidden; font-size: 18px; }
+        th { background-color: #ffffff; color: #000000; font-weight: bold; padding-top: 0px; padding-bottom: 6px; border-bottom: 2px solid #000; text-align: center; font-size: 16px; }
+        td { padding: 2px; border-bottom: 1px solid #000; color: #000; text-align: center; }
+        tr:last-child td { border-bottom: 2px solid #000; }
+        
+        @media print {
+            .print-btn { display: none; }
+            body { padding: 0; }
+            .card { box-shadow: none; padding: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <button class="print-btn" onclick="window.print()">🖨️ Drukuj / PDF</button>
+
+    <div class="card">
+        <div class="header-area">
+            <h3>ZESTAWIENIE GODZIN PRACY</h3>
+<div class="meta-container">
+    <div class="meta-text">Pracownik: <strong id="lblPracownik">...</strong></div>
+    <div class="meta-text">Okres: <strong id="lblOkres">...</strong></div>
+</div>
+        </div>
+
+        <div id="loader">Pobieranie danych z bazy...</div>
+
+        <div id="results" class="results-container">
+            <!-- Tutaj wpadnie wygenerowana tabela na 31 dni -->
+        </div>
+    </div>
+
+<script>
+    // URL pobrany bezpośrednio z Twojego kodu podglądu
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLFI-RR9SJTVsaqZay5bRHfNT2atfVs2ByoXQC0MAN1Qi6E_m1RgIkfxwzEAQRJKtW/exec";
+
+document.addEventListener('DOMContentLoaded', async () => {
+        // Wyciągamy nowe parametry z adresu URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const nameToSearch = urlParams.get('szukaj'); // Posiada cyfry, np. "Jan Nowak 857394"
+        const nameToDisplay = urlParams.get('pokaz'); // Czysty tekst, np. "Jan Nowak"
+        const month = urlParams.get('miesiac');
+        const year = urlParams.get('rok');
+
+        if (!nameToSearch || !month || !year) {
+            document.getElementById('loader').innerHTML = `<span style="color:red;">❌ Błąd: Brak wymaganych parametrów.</span>`;
+            return;
+        }
+
+        // POKAZYWANIE: W nagłówku strony wpisujemy ładne imię bez cyfr
+        document.getElementById('lblPracownik').innerText = nameToDisplay || nameToSearch;
+        document.getElementById('lblOkres').innerText = `${month} ${year}`;
+
+        const savedDeviceId = localStorage.getItem('app_device_id') || localStorage.getItem('device_id') || "";
+        const loader = document.getElementById('loader');
+        const resultsDiv = document.getElementById('results');
+
+        const payload = {
+            action: "get_history",
+            kod: nameToSearch, // SZUKANIE: Do bazy Google leci dokładny kod z cyframi!
+            miesiac: month,
+            rok: year,
+            deviceId: savedDeviceId
+        };
+
+        // ... reszta Twojego kodu fetch pozostaje bez zmian ...
+
+        try {
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify(payload)
+            });
+            
+ const data = await response.json();
+
+            if (data && data.status === "error") {
+                resultsDiv.innerHTML = `<div style="color: red; font-weight: bold; text-align: center; padding: 20px;">${data.message}</div>`;
+                loader.style.display = "none";
+                return;
+            }
+
+            // === NOWA LOGIKA: Sprawdzamy, czy baza zwróciła jakiekolwiek rekordy dla tej osoby ===
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                resultsDiv.innerHTML = `
+                    <div style="color: #d32f2f; font-weight: bold; text-align: center; padding: 30px; border: 1px dashed #d32f2f; border-radius: 8px; margin-top: 20px; font-size: 16px; background-color: #ffebee;">
+                        ⚠️ Brak osoby o takim imieniu i nazwisku w wybranym okresie.
+                    </div>`;
+                loader.style.display = "none";
+                return; // Przerywamy dalsze wykonywanie kodu, nie budujemy tabeli
+            }
+
+            // Mapowanie dni (Twoja oryginalna logika - wykona się tylko, gdy dane ISTNIEJĄ)
+            const dataMap = {};
+            data.forEach(item => {
+                if (!dataMap[item.dzien]) {
+                    dataMap[item.dzien] = item;
+                }
+            });
+
+            // Budowanie tabeli na 31 dni
+            let html = `<table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">dzień miesiąca</th>
+                        <th>rozpoczęcie</th>
+                        <th>zakończenie</th>
+                        <th>czas pracy</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+            
+for (let d = 1; d <= 31; d++) {
+                if (dataMap[d]) {
+                    // Pobieramy czas pracy z bazy danych
+                    const czasPracy = dataMap[d].czas ? dataMap[d].czas.trim() : "";
+
+                    // Sprawdzamy, czy czas pracy to zero (obsługuje formaty: 0:00, 00:00, 00:00:00)
+                    if (czasPracy === "0:00" || czasPracy === "00:00" || czasPracy === "00:00:00") {
+                        // Jeśli czas pracy wynosi 0, traktujemy dzień jako nieprzepracowany
+                        html += `<tr style="color: #888;">
+                            <td style="font-weight: normal; color: #000;">${d}</td>
+                            <td>---</td>
+                            <td>---</td>
+                            <td>---</td>
+                        </tr>`;
+                    } else {
+                        // Jeśli czas jest większy niż zero, wpisujemy normalne dane
+                        html += `<tr>
+                            <td style="font-weight: bold; color: #000;">${d}</td>
+                            <td>${dataMap[d].rozpoczecie}</td>
+                            <td>${dataMap[d].zakonczenie}</td>
+                            <td><strong>${czasPracy}</strong></td>
+                        </tr>`;
+                    }
+                } else {
+                    // Jeśli pracownika w ogóle nie było w arkuszu dla tego dnia
+                    html += `<tr style="color: #888;">
+                        <td style="font-weight: normal; color: #000;">${d}</td>
+                        <td>---</td>
+                        <td>---</td>
+                        <td>---</td>
+                    </tr>`;
+                }
+            }
+
+
+
+            html += '</tbody></table>';
+            resultsDiv.innerHTML = html;
+            loader.style.display = "none";
+
+        } catch (error) {
+            console.error(error);
+            loader.innerHTML = `<span style="color:red;">❌ Błąd połączenia. Upewnij się, że masz połączenie z siecią.</span>`;
+        }
+    });
+</script>
+</body>
+</html>

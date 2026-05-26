@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZESTAWIENIE GODZIN PRACY</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 5px; max-width: 700px; margin: auto; background-color: #ffffff; }
+        .card { background: white; padding: 6px; border-radius: 12px; box-shadow: 0 0 1px 1px rgba(0,0,0,0.6); }
+        h3 { text-align: center; color: #000; margin: 0; }
+        label { display: block; margin-top: 6px; font-weight: bold; color: #000000; }
+        input, select { width: 100%; padding: 6px; margin-top: 2px; border: 1px solid #000000; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+        
+        button { width: 100%; padding: 5px; background-color: #fff; color: #000; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; margin-top: 15px; cursor: pointer; transition: 0.2s; box-shadow: 0 0 1px 1px rgba(0,0,0,0.6);}
+        button:hover { background-color: #000; color: #fff; }
+        button:active { transform: scale(0.98); background-color: #1557b0; }
+        button:disabled { background-color: #ccc; }
+
+        #loader { display: none; text-align: center; margin-top: 20px; color: #000; font-weight: bold; }
+        
+        .results-container { margin-top: 5px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; font-size: 18px; }
+        th { background-color: #ffffff; color: #000000; font-weight: bold; padding-top: 6px; border-bottom: 1px solid #888; text-align: center; font-size: 16px;}
+        td { padding: 2px; border-bottom: 1px solid #888; color: #000; text-align: center;}
+        tr:last-child td { border-bottom: none; }
+        .no-data { text-align: center; padding: 20px; color: #999; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h3>ZESTAWIENIE GODZIN PRACY</h3>
+
+
+        <div style="display: flex; gap: 8px;">
+            <div style="flex: 1;">
+                <label>Rok</label>
+                <input type="number" id="yearInput">
+            </div>
+            <div style="flex: 2;">
+                <label>Miesiąc</label>
+                <select id="monthSelect">
+                    <option value="Styczeń">Styczeń</option><option value="Luty">Luty</option>
+                    <option value="Marzec">Marzec</option><option value="Kwiecień">Kwiecień</option>
+                    <option value="Maj">Maj</option><option value="Czerwiec">Czerwiec</option>
+                    <option value="Lipiec">Lipiec</option><option value="Sierpień">Sierpień</option>
+                    <option value="Wrzesień">Wrzesień</option><option value="Październik">Październik</option>
+                    <option value="Listopad">Listopad</option><option value="Grudzień">Grudzień</option>
+                </select>
+            </div>
+
+        </div>
+
+<div style="display: flex; gap: 10px; align-items: center; margin-top: 15px; flex-wrap: wrap;">
+    <input type="text" id="nameInput" placeholder="Wpisz imię i nazwisko" style="margin-top: 0; flex: 1; min-width: 150px;">
+<div style="display: flex; gap: 0px; align-items: center; margin-top: 0px; flex-wrap: wrap;">
+<button id="fetchBtn" onclick="getWorkHistory()"style="width: auto; margin-top: 0; padding: 12px 12px; font-size: 16px; white-space: nowrap;">POKAŻ GODZINY</button></div>
+</div>
+
+    
+        
+        <div id="loader">Pobieranie danych...</div>
+
+        <div id="results" class="results-container">
+            <!-- Tutaj wpadnie tabela -->
+        </div>
+    </div>
+
+<script>
+    // --- TU WKLEJ SWÓJ LINK DO GOOGLE SCRIPT ---
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLFI-RR9SJTVsaqZay5bRHfNT2atfVs2ByoXQC0MAN1Qi6E_m1RgIkfxwzEAQRJKtW/exec";
+
+    // Ustawienie domyślnego roku i miesiąca na dzisiaj
+    const now = new Date();
+    const monthNames = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+    
+    // Zapobiegamy błędom, jeśli skrypt załaduje się przed elementami DOM
+    window.addEventListener('DOMContentLoaded', () => {
+        if(document.getElementById('yearInput')) document.getElementById('yearInput').value = now.getFullYear();
+        if(document.getElementById('monthSelect')) document.getElementById('monthSelect').value = monthNames[now.getMonth()];
+    });
+
+    async function getWorkHistory() {
+        const name = document.getElementById('nameInput').value.trim();
+        const month = document.getElementById('monthSelect').value;
+        const year = document.getElementById('yearInput').value;
+        const btn = document.getElementById('fetchBtn');
+        const loader = document.getElementById('loader');
+        const resultsDiv = document.getElementById('results');
+
+        if (!name) {
+            alert("Proszę wpisać nazwisko.");
+            return;
+        }
+
+        // INTELLIGENTNE SPRAWDZENIE IDENTYFIKATORA: nowy klucz lub stary jako fallback
+        const savedDeviceId = localStorage.getItem('app_device_id') || localStorage.getItem('device_id') || "";
+
+        // Blokada: Brak identyfikatora w pamięci telefonu
+
+
+        btn.disabled = true;
+        loader.style.display = "block";
+        resultsDiv.innerHTML = "";
+
+        const payload = {
+            action: "get_history",
+            kod: name,
+            miesiac: month,
+            rok: year,
+            deviceId: savedDeviceId // Przekazanie klucza autoryzacyjnego do Google Apps Script
+        };
+
+        try {
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify(payload)
+            });
+            
+ const data = await response.json();
+
+            if (data && data.status === "error") {
+                resultsDiv.innerHTML = `<div style="color: red; font-weight: bold; text-align: center; padding: 20px;">${data.message}</div>`;
+                loader.style.display = "none";
+                return;
+            }
+
+            // === NOWA LOGIKA: Sprawdzamy, czy baza zwróciła jakiekolwiek rekordy dla tej osoby ===
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                resultsDiv.innerHTML = `
+                    <div style="color: #d32f2f; font-weight: bold; text-align: center; padding: 30px; border: 1px dashed #d32f2f; border-radius: 8px; margin-top: 20px; font-size: 16px; background-color: #ffebee;">
+                        ⚠️ Brak osoby o takim imieniu i nazwisku w wybranym okresie.
+                    </div>`;
+                loader.style.display = "none";
+                return; // Przerywamy dalsze wykonywanie kodu, nie budujemy tabeli
+            }
+
+            // Mapowanie dni (Twoja oryginalna logika - wykona się tylko, gdy dane ISTNIEJĄ)
+            const dataMap = {};
+            data.forEach(item => {
+                if (!dataMap[item.dzien]) {
+                    dataMap[item.dzien] = item;
+                }
+            });
+
+            // Budowanie tabeli na 31 dni
+            let html = `<table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">dzień</th>
+                        <th>rozpoczęcie</th>
+                        <th>zakończenie</th>
+                        <th>czas pracy</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+            
+for (let d = 1; d <= 31; d++) {
+                if (dataMap[d]) {
+                    // Pobieramy czas pracy z bazy danych
+                    const czasPracy = dataMap[d].czas ? dataMap[d].czas.trim() : "";
+
+                    // Sprawdzamy, czy czas pracy to zero (obsługuje formaty: 0:00, 00:00, 00:00:00)
+                    if (czasPracy === "0:00" || czasPracy === "00:00" || czasPracy === "00:00:00") {
+                        // Jeśli czas pracy wynosi 0, traktujemy dzień jako nieprzepracowany
+                        html += `<tr style="color: #888;">
+                            <td style="font-weight: normal; color: #000;">${d}</td>
+                            <td>---</td>
+                            <td>---</td>
+                            <td>---</td>
+                        </tr>`;
+                    } else {
+                        // Jeśli czas jest większy niż zero, wpisujemy normalne dane
+                        html += `<tr>
+                            <td style="font-weight: bold; color: #000;">${d}</td>
+                            <td>${dataMap[d].rozpoczecie}</td>
+                            <td>${dataMap[d].zakonczenie}</td>
+                            <td><strong>${czasPracy}</strong></td>
+                        </tr>`;
+                    }
+                } else {
+                    // Jeśli pracownika w ogóle nie było w arkuszu dla tego dnia
+                    html += `<tr style="color: #888;">
+                        <td style="font-weight: normal; color: #000;">${d}</td>
+                        <td>---</td>
+                        <td>---</td>
+                        <td>---</td>
+                    </tr>`;
+                }
+            }
+
+            html += '</tbody></table>';
+            resultsDiv.innerHTML = html;
+
+        } catch (error) {
+            console.error(error);
+            alert("Błąd połączenia. Sprawdź czy urządzenie ma internet i czy GOOGLE_SCRIPT_URL jest poprawny.");
+        } finally {
+            btn.disabled = false;
+            loader.style.display = "none";
+        }
+    }
+
+    function openEmployeeList() {
+        const month = document.getElementById('monthSelect').value;
+        const year = document.getElementById('yearInput').value;
+        window.open(`lista.html?miesiac=${encodeURIComponent(month)}&rok=${encodeURIComponent(year)}`, '_blank');
+    }
+    
+    function openMonthlyReport() {
+        const month = document.getElementById('monthSelect').value;
+        const year = document.getElementById('yearInput').value;
+        window.open(`raport.html?miesiac=${encodeURIComponent(month)}&rok=${encodeURIComponent(year)}`, '_blank');
+    }
+</script>
+</body>
+</html>

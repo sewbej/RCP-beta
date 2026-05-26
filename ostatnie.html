@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RCP - Ostatnie Wpisy</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 5px; max-width: 700px; margin: auto; background-color: #ffffff; }
+        .card { background: white; padding: 6px; border-radius: 12px; box-shadow: 0 0 1px 1px rgba(0,0,0,0.6); }
+        h5 { text-align: center; color: #000; margin: 0; }
+        
+        button { width: 100%; padding: 5px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+        .btn-refresh { background-color: #1a73e8; color: white; }
+        button:active { transform: scale(0.98); }
+        button:disabled { background-color: #ccc; }
+
+        #loader { text-align: center; margin: 20px 0; color: #000; font-weight: bold; }
+        
+        .results-container { margin-top: 5px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; font-size: 16px; }
+        th { background-color: #ffffff; color: #000000; font-weight: bold; padding-top: 6px; border-bottom: 1px solid #444; text-align: center; font-size: 14px;}
+        td { padding: 2px; border-bottom: 1px solid #444; border-left: 1px solid #ccc; color: #000; text-align: center;}
+        tr:last-child, td:last-child { border-right: 1px solid #ccc; }
+        .no-data { text-align: center; padding: 20px; color: #999; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h5>30 ostatnich wpisów</h5>
+        
+        <button class="btn-refresh" id="refreshBtn" onclick="fetchRecentEntries()">ODŚWIEŻ LISTĘ</button>
+        
+        <div id="loader">Pobieranie danych...</div>
+
+        <div id="results" class="results-container">
+            <!-- Tabela wygeneruje się tutaj automatycznie -->
+        </div>
+
+    </div>
+
+<script>
+    // --- TU WKLEJ SWÓJ LINK DO GOOGLE SCRIPT ---
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLFI-RR9SJTVsaqZay5bRHfNT2atfVs2ByoXQC0MAN1Qi6E_m1RgIkfxwzEAQRJKtW/exec";
+
+    async function fetchRecentEntries() {
+        const btn = document.getElementById('refreshBtn');
+        const loader = document.getElementById('loader');
+        const resultsDiv = document.getElementById('results');
+
+        btn.disabled = true;
+        loader.style.display = "block";
+        resultsDiv.innerHTML = "";
+
+        // POBIERANIE Z PAMIĘCI URZĄDZENIA: Szukamy klucza o nazwie 'app_device_id'
+        const savedDeviceId = localStorage.getItem('app_device_id') || "";
+
+        // Jeśli pamięć jest pusta, przerywamy i prosimy o autoryzację
+        if (!savedDeviceId) {
+            resultsDiv.innerHTML = `
+                <div class="no-data" style="color: #d9534f; font-weight: bold; padding: 20px;">
+                    Brak identyfikatora urządzenia w pamięci!<br>
+                    <small style="color: #666; font-weight: normal;">Zautoryzuj urządzenie w panelu głównym aplikacji.</small>
+                </div>`;
+            btn.disabled = false;
+            loader.style.display = "none";
+            return;
+        }
+
+        try {
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ 
+                    action: "get_recent",
+                    deviceId: savedDeviceId // Dynamicznie wstrzyknięty klucz z pamięci telefonu
+                })
+            });
+            
+            const data = await response.json();
+
+            // Obsługa błędu autoryzacji zwróconego z Google Apps Script
+            if (data && data.status === "error") {
+                resultsDiv.innerHTML = `<div class="no-data" style="color: red; font-weight: bold;">${data.message}</div>`;
+                return;
+            }
+
+            if (!Array.isArray(data) || data.length === 0) {
+                resultsDiv.innerHTML = '<div class="no-data">Brak jakichkolwiek wpisów w arkuszu.</div>';
+            } else {
+                let html = `<table>
+                    <thead>
+                        <tr>
+                            <th>nazwisko</th>
+                            <th>data</th>
+                            <th>rozpoczęcie</th>
+                            <th>zakończenie</th>
+                            <th>czas_pracy</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+                
+                const wyswietloneWpisy = new Set();
+
+                data.forEach(row => {
+                    const kluczDnia = `${row.nazwisko.trim().toLowerCase()}_${row.data}`;
+
+                    if (!wyswietloneWpisy.has(kluczDnia)) {
+                        wyswietloneWpisy.add(kluczDnia);
+
+                        html += `<tr>
+                            <td style="font-weight: normal; color: #000; text-align: left">${row.nazwisko}</td>
+                            <td>${row.data}</td>
+                            <td>${row.rozpoczecie}</td>
+                            <td>${row.zakonczenie}</td>
+                            <td>${row.czas}</td>
+                        </tr>`;
+                    }
+                });
+
+                html += '</tbody></table>';
+                resultsDiv.innerHTML = html;
+            }
+        } catch (error) {
+            console.error(error);
+            resultsDiv.innerHTML = '<div class="no-data" style="color: red;">Błąd połączenia ze skryptem Google.</div>';
+        } finally {
+            btn.disabled = false;
+            loader.style.display = "none";
+        }
+    }
+
+    window.onload = fetchRecentEntries;
+</script>
+</body>
+</html>

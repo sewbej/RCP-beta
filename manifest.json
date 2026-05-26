@@ -1,0 +1,16 @@
+{
+  "name": "Skaner",
+  "short_name": "Skaner",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f0f2f5",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "https://sewbej.github.io/dostawy/EAN13.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

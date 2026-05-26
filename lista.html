@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista Pracowników</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 5px; max-width: 500px; margin: auto; background-color: #f0f2f5; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #000; margin-top: 0; }
+        h3 { text-align: center; color: #000; margin-top: -10px; font-weight: normal; }
+        
+        #loader { text-align: center; margin: 20px 0; color: #000; font-weight: bold; }
+        
+        .results-container { margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; font-size: 15px; }
+        th { background-color: #f8f9fa; color: #5f6368; font-weight: bold; padding: 6px; border-bottom: 2px solid #eee; text-align: left; }
+        td { padding: 6px; border-bottom: 1px solid #eee; color: #3c4043; }
+        tr:last-child td { border-bottom: none; }
+        .no-data { text-align: center; padding: 20px; color: #999; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Pracownicy w miesiącu:</h2>
+        <h3 id="periodDisplay">Pobieranie okresu...</h3>
+        
+        <div id="loader">Generowanie listy osób...</div>
+
+        <div id="results" class="results-container">
+            <!-- Tabela wygeneruje się automatycznie -->
+        </div>
+    </div>
+
+<script>
+    // --- TU WKLEJ SWÓJ LINK DO GOOGLE SCRIPT ---
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLFI-RR9SJTVsaqZay5bRHfNT2atfVs2ByoXQC0MAN1Qi6E_m1RgIkfxwzEAQRJKtW/exec";
+
+    // Odczytanie parametrów z adresu URL (?miesiac=Maj&rok=2026)
+    const urlParams = new URLSearchParams(window.location.search);
+    const miesiac = urlParams.get('miesiac');
+    const rok = urlParams.get('rok');
+
+    async function fetchEmployeeList() {
+        const loader = document.getElementById('loader');
+        const resultsDiv = document.getElementById('results');
+        const periodDisplay = document.getElementById('periodDisplay');
+
+        if (!miesiac || !rok) {
+            resultsDiv.innerHTML = '<div class="no-data" style="color: red;">Błąd: Nie przekazano okresu w adresie URL.</div>';
+            loader.style.display = "none";
+            return;
+        }
+
+        periodDisplay.innerText = `${miesiac} ${rok}`;
+
+        // INTELLIGENTNE SPRAWDZENIE IDENTYFIKATORA: nowy klucz lub stary jako fallback
+        const savedDeviceId = localStorage.getItem('app_device_id') || localStorage.getItem('device_id') || "";
+
+        // Blokada: Brak identyfikatora w pamięci telefonu
+        if (!savedDeviceId) {
+            resultsDiv.innerHTML = `
+                <div class="no-data" style="color: #d9534f; font-weight: bold; padding: 20px;">
+                    Brak identyfikatora urządzenia w pamięci!<br>
+                    <small style="color: #666; font-weight: normal;">Zautoryzuj urządzenie w panelu głównym aplikacji (index.html).</small>
+                </div>`;
+            loader.style.display = "none";
+            return;
+        }
+
+        try {
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({
+                    action: "get_employee_list",
+                    miesiac: miesiac,
+                    rok: rok,
+                    deviceId: savedDeviceId // Przekazanie klucza autoryzacyjnego do Google Apps Script
+                })
+            });
+            
+            const data = await response.json(); // Tablica unikalnych nazwisk lub obiekt błędu
+
+            // Obsługa błędu autoryzacji bezpośrednio ze skryptu Google
+            if (data && data.status === "error") {
+                resultsDiv.innerHTML = `<div class="no-data" style="color: red; font-weight: bold;">${data.message}</div>`;
+                return;
+            }
+
+            if (!Array.isArray(data) || data.length === 0) {
+                resultsDiv.innerHTML = `<div class="no-data">W miesiącu ${miesiac} ${rok} nikt nie rejestrował czasu pracy.</div>`;
+            } else {
+                let html = `<table>
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">Lp.</th>
+                            <th>Imię i Nazwisko</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+                
+                data.forEach((nazwisko, index) => {
+                    html += `<tr>
+                        <td style="color: #000;">${index + 1}.</td>
+                        <td style="font-weight: bold; color: #000;">${nazwisko}</td>
+                    </tr>`;
+                });
+
+                html += '</tbody></table>';
+                resultsDiv.innerHTML = html;
+            }
+        } catch (error) {
+            console.error(error);
+            resultsDiv.innerHTML = '<div class="no-data" style="color: red;">Błąd połączenia z bazą danych Google.</div>';
+        } finally {
+            loader.style.display = "none";
+        }
+    }
+
+    // Uruchomienie funkcji od razu po wejściu na stronę
+    window.onload = fetchEmployeeList;
+</script>
+</body>
+</html>
